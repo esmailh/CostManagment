@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">مدیریت هزینه</string>
+    <string name="title_activity_main">مدیریت هزینه</string>
+    <string name="package_name">com.personal.expensetracker</string>
+    <string name="custom_url_scheme">com.personal.expensetracker</string>
+</resources>
