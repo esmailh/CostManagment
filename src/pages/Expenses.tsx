@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Expense } from '../db/types';
 import { useApp } from '../context/AppContext';
 import { useCategories } from '../hooks/useCategories';
+import { useLoanLenderIcons } from '../hooks/useLoanLenderIcons';
 import { useMonthExpenses } from '../hooks/useMonthExpenses';
 import { deleteExpense, updateExpense } from '../services/expenses';
 import { MonthSwitcher } from '../components/MonthSwitcher';
@@ -22,6 +23,7 @@ export function Expenses() {
   const { year, month } = useApp();
   const expenses = useMonthExpenses(year, month);
   const categories = useCategories();
+  const loanLenderIcons = useLoanLenderIcons();
 
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('');
@@ -35,6 +37,25 @@ export function Expenses() {
   const [deleting, setDeleting] = useState<Expense | null>(null);
 
   const categoryOf = (id: string) => categories.find((c) => c.id === id);
+
+  /**
+   * An installment expense belongs to one lender, so it shows that bank's logo
+   * instead of the shared «اقساط» category icon — several loans paid in the same
+   * month would otherwise all look alike. Anything without a lender logo (a
+   * non-installment expense, or a loan whose lender has none) keeps the category
+   * icon, which is also the fallback when the logo image fails to load.
+   */
+  const iconOf = (expense: Expense) => {
+    const category = categoryOf(expense.categoryId);
+    const lenderIcon = expense.loanId ? loanLenderIcons.get(expense.loanId) : null;
+    return (
+      <CategoryIcon
+        icon={lenderIcon || category?.icon}
+        fallback={category?.icon ?? '📦'}
+        alt={category?.name}
+      />
+    );
+  };
 
   const filtered = useMemo(() => {
     const min = parseDigits(minAmount);
@@ -133,7 +154,7 @@ export function Expenses() {
                 style={{ width: '100%', background: 'none', border: 'none', textAlign: 'right', cursor: 'pointer' }}
                 onClick={() => setDetail(e)}
               >
-                <div className="list-item__icon"><CategoryIcon icon={cat?.icon} fallback="📦" alt={cat?.name} /></div>
+                <div className="list-item__icon">{iconOf(e)}</div>
                 <div className="list-item__body">
                   <div className="list-item__title">
                     {e.isRecurring && <span className="badge chip--recurring" style={{ marginLeft: 6 }}>ثابت</span>}
@@ -158,7 +179,7 @@ export function Expenses() {
               const cat = categoryOf(detail.categoryId);
               return (
                 <div className="list-item" style={{ padding: '0 0 12px' }}>
-                  <div className="list-item__icon"><CategoryIcon icon={cat?.icon} fallback="📦" alt={cat?.name} /></div>
+                  <div className="list-item__icon">{iconOf(detail)}</div>
                   <div className="list-item__body">
                     <div className="list-item__title">{detail.title}</div>
                     <div className="list-item__sub">{cat?.name ?? 'نامشخص'}</div>
