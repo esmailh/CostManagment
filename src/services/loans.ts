@@ -1,6 +1,6 @@
 ﻿import { db } from '../db/db';
 import type { Loan, LoanInstallment, LoanMode } from '../db/types';
-import { monthLength, nextMonth, todayJalali, type JalaliDate } from '../lib/jalaali';
+import { monthLength, nextMonth, shiftMonth, todayJalali, type JalaliDate } from '../lib/jalaali';
 import { uuid } from '../lib/id';
 
 export interface LoanInput {
@@ -100,14 +100,19 @@ function buildSchedule(input: LoanUpdateInput): Array<JalaliDate | null> {
     throw new Error('تعداد اقساط باید بین ۱ تا ۱۲۰ باشد.');
   }
   if (input.mode === 'term') {
-    const start = input.startYear && input.startMonth
-      ? { year: input.startYear, month: input.startMonth }
-      : todayJalali();
-    if (start.month < 1 || start.month > 12) throw new Error('ماه شروع معتبر نیست.');
+    // A term-only loan carries no explicit schedule, so the installments the user has
+    // already paid anchor it: the schedule is laid out so that the last paid one falls
+    // due in the current month. Reading that count as a schedule starting from the
+    // current month would date every payment made so far — and the expense booked for
+    // it — in the future. That is only right while nothing has been paid yet, where the
+    // first installment is simply due next month.
+    const requested = input.paidCount ?? 0;
+    const paidCount = Number.isInteger(requested) && requested > 0
+      ? Math.min(requested, input.installmentCount)
+      : 0;
+    const today = todayJalali();
+    let cursor = shiftMonth(today.year, today.month, paidCount > 0 ? 1 - paidCount : 1);
     const dates: JalaliDate[] = [];
-    // The selected month is the loan start month; the first installment falls
-    // due in the following month.
-    let cursor = nextMonth(start.year, start.month);
     for (let i = 0; i < input.installmentCount; i += 1) {
       dates.push({ ...cursor, day: 1 });
       cursor = nextMonth(cursor.year, cursor.month);
@@ -127,6 +132,31 @@ function validateDate(date: JalaliDate, label = 'تاریخ پرداخت'): void
     || !Number.isInteger(date.day) || date.day < 1 || date.day > monthLength(date.year, date.month)) {
     throw new Error(`${label} معتبر نیست.`);
   }
+}
+
+/** Whether `date` falls in a later month than `reference`. */
+function isLaterMonth(date: JalaliDate, reference: JalaliDate): boolean {
+  return date.year * 12 + date.month > reference.year * 12 + reference.month;
+}
+
+/**
+ * The date a payment is booked at. A payment recorded just now follows its
+ * installment's due date, and one already recorded keeps its own date so that merely
+ * editing a loan never moves past expenses. A date beyond both today and the due date
+ * is the exception: nothing already paid can be dated after the day it was due, and a
+ * term loan used to produce exactly that when its paid count was read as a schedule
+ * starting from the current month. Such a payment follows the corrected due date, so
+ * its expense lands in the month the installment belongs to.
+ */
+function resolvePaymentDate(
+  previous: JalaliDate | null,
+  due: JalaliDate | null,
+  fallback: JalaliDate,
+  isNewPayment: boolean,
+): JalaliDate {
+  if (isNewPayment || !previous || !due) return due ?? fallback;
+  if (isLaterMonth(previous, fallback) && isLaterMonth(previous, due)) return due;
+  return previous;
 }
 
 function normalizePaidCount(input: Pick<LoanInput, 'mode' | 'paidCount' | 'installmentCount'>): number {
@@ -329,12 +359,10 @@ export async function updateLoan(loanId: string, input: LoanUpdateInput): Promis
         const paidAmount = newlyPaid ? amounts[index] ?? defaultAmount : existing.paidAmount;
         if (newlyPaid && paidAmount === null) throw new Error(`مبلغ قسط ${index + 1} برای ثبت پرداخت مشخص نیست.`);
         if (!shouldBePaid && existing.expenseId) await db.expenses.delete(existing.expenseId);
-        const hasPaymentDate = existing.paidYear !== null && existing.paidMonth !== null && existing.paidDay !== null;
-        // A payment recorded now is dated at the installment's due date; one already
-        // recorded keeps its date, so merely editing a loan never moves past expenses.
-        const paymentDate = newlyPaid || !hasPaymentDate ? (dueDate ?? reconciliationDate) : {
-          year: existing.paidYear!, month: existing.paidMonth!, day: existing.paidDay!,
-        };
+        const recordedDate: JalaliDate | null = existing.paidYear !== null && existing.paidMonth !== null && existing.paidDay !== null
+          ? { year: existing.paidYear, month: existing.paidMonth, day: existing.paidDay }
+          : null;
+        const paymentDate = resolvePaymentDate(recordedDate, dueDate, reconciliationDate, newlyPaid);
         const reconciled: LoanInstallment = {
           ...existing,
           installmentNumber: index + 1,

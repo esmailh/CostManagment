@@ -71,3 +71,9 @@ export function nextMonth(year: number, month: number): JalaliDate {
   if (month === 12) return { year: year + 1, month: 1, day: 1 };
   return { year, month: month + 1, day: 1 };
 }
+
+/** The month `delta` months away from (year, month); `delta` may be negative. */
+export function shiftMonth(year: number, month: number, delta: number): JalaliDate {
+  const index = year * 12 + (month - 1) + delta;
+  return { year: Math.floor(index / 12), month: ((index % 12) + 12) % 12 + 1, day: 1 };
+}
