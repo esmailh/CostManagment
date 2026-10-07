@@ -123,6 +123,8 @@ export interface LoanReportItem {
   id: string;
   title: string;
   lenderName: string;
+  /** Logo of the lender, or null when it has none. */
+  lenderIcon: string | null;
   installmentCount: number;
   paidCount: number;
   remainingCount: number;
@@ -154,6 +156,7 @@ export async function getLoansReport(): Promise<LoansReport> {
     db.lenders.toArray(),
   ]);
   const lenderNames = new Map(lenders.map((lender) => [lender.id, lender.name]));
+  const lenderIcons = new Map(lenders.map((lender) => [lender.id, lender.icon || null]));
   const byLoan = new Map<string, typeof installments>();
   for (const installment of installments) {
     const group = byLoan.get(installment.loanId) ?? [];
@@ -175,6 +178,7 @@ export async function getLoansReport(): Promise<LoansReport> {
       id: loan.id,
       title: loan.title,
       lenderName: lenderNames.get(loan.lenderId) ?? 'وام‌دهنده نامشخص',
+      lenderIcon: lenderIcons.get(loan.lenderId) ?? null,
       installmentCount: loan.installmentCount,
       paidCount,
       remainingCount,
