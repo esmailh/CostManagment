@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 export function isImageIcon(icon: string | null | undefined): icon is string {
   return Boolean(
@@ -19,7 +19,7 @@ export function resolveCategoryIcon(icon: string): string {
 
 interface CategoryIconProps {
   icon: string | null | undefined;
-  fallback?: string;
+  fallback?: ReactNode;
   alt?: string;
   className?: string;
 }

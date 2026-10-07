@@ -5,10 +5,12 @@ import { Field } from '../components/ui/Field';
 import { Sheet } from '../components/ui/Sheet';
 import { CheckIcon, EditIcon, PlusIcon, TrashIcon, WalletIcon } from '../components/ui/Icons';
 import { EmptyState } from '../components/ui/EmptyState';
+import { CategoryIcon } from '../components/CategoryIcon';
 import { JalaliDateFields } from '../components/JalaliDateFields';
 import { useApp } from '../context/AppContext';
 import { useCategories } from '../hooks/useCategories';
 import { useLenders } from '../hooks/useLenders';
+import { useLoanLenderIcons } from '../hooks/useLoanLenderIcons';
 import { useLoans, type LoanWithDetails } from '../hooks/useLoans';
 import { formatPercent, formatRial, parseDigits } from '../lib/format';
 import { formatJalaliDate, todayJalali, toPersianDigits } from '../lib/jalaali';
@@ -52,6 +54,7 @@ export function Loans() {
   const { addOpen, setAddOpen } = useApp();
   const loans = useLoans();
   const lenders = useLenders();
+  const lenderIcons = useLoanLenderIcons();
   const categories = useCategories();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<LoanWithDetails | null>(null);
@@ -145,7 +148,7 @@ export function Loans() {
         const progress = summary.progress ?? (hasCount ? (summary.paidCount / loan.installmentCount) * 100 : null);
         return <article className="card loan-card" key={loan.id}>
           <button type="button" className="loan-card__summary" onClick={() => setExpanded(expanded === loan.id ? null : loan.id)}>
-            <span className="loan-card__icon"><WalletIcon /></span>
+            <span className="loan-card__icon"><CategoryIcon icon={lenderIcons.get(loan.id)} fallback={<WalletIcon />} alt={lenderNames.get(loan.lenderId)} /></span>
             <span className="loan-card__main">
               <span className="loan-card__title"><strong>{loan.title}</strong>{hasCount && <span>{toPersianDigits(loan.installmentCount)} قسط</span>}</span>
               {progress !== null && <span className="loan-progress"><span style={{ width: `${progress}%` }} /></span>}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { CategoryIcon } from '../components/CategoryIcon';
 import { MonthSwitcher } from '../components/MonthSwitcher';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -176,7 +177,9 @@ function LoansReport() {
           return (
             <article className="loan-card loan-report__card" key={loan.id}>
               <div className="loan-card__summary">
-                <div className="loan-card__icon">💳</div>
+                <div className="loan-card__icon">
+                  <CategoryIcon icon={loan.lenderIcon} fallback="💳" alt={loan.lenderName} />
+                </div>
                 <div className="loan-card__main">
                   <div className="loan-card__title"><strong>{loan.title}</strong><span>{loan.lenderName}</span></div>
                   <div className="loan-progress"><span style={{ width: `${Math.min(100, loan.progress)}%` }} /></div>
