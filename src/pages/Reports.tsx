@@ -22,7 +22,7 @@ import {
   previousMonth,
   toPersianDigits,
 } from '../lib/jalaali';
-import { formatNumber, formatPercent, formatRial } from '../lib/format';
+import { formatNumber, formatPercent, formatPercentFixed, formatRial } from '../lib/format';
 
 type ReportType = 'monthly' | 'category' | 'daily' | 'comparison' | 'loans';
 
@@ -161,7 +161,11 @@ function LoansReport() {
         <div><span>اقساط پرداختی</span><strong>{formatNumber(report.paidCount)} از {formatNumber(report.installmentCount)}</strong></div>
         <div><span>مجموع پرداختی</span><strong>{amount(report.paidAmount)}</strong></div>
         <div><span>مانده کل</span><strong>{amount(report.remainingAmount)}</strong></div>
+        {/* Interest is summed over the loans that carry it, so the two cells are read together. */}
+        <div><span>مجموع سود</span><strong>{amount(report.totalInterest)}</strong></div>
+        <div><span>وام‌های سوددار</span><strong>{formatNumber(report.interestBearingCount)}</strong></div>
         <div><span>پیشرفت کل</span><strong>{formatPercent(report.progress)}</strong></div>
+        <div><span>اقساط باقی‌مانده</span><strong>{formatNumber(report.remainingCount)}</strong></div>
       </div>
 
       <div className="section-title">جزئیات وام‌ها</div>
@@ -191,6 +195,17 @@ function LoansReport() {
                 <div><span>مانده</span><strong>{amount(loan.remainingAmount)}</strong></div>
                 <div><span>پایان</span><strong>{finish}</strong></div>
               </div>
+              {loan.interest && loan.interest.monthlyRate !== null && loan.interest.effectiveAnnualRate !== null && <div className="loan-interest">
+                <span>سود</span>
+                <strong>{formatPercentFixed(loan.interest.monthlyRate * 100, 4)} ماهانه</strong>
+                <strong>{formatPercentFixed(loan.interest.effectiveAnnualRate * 100, 2)} مؤثر سالانه</strong>
+                {/* A schedule that repays less than the principal yields a negative subtraction; the
+                    strip reports the disagreement rather than labelling a negative number «سود کل». */}
+                {loan.interest.totalInterest !== null && !loan.interest.repaymentBelowPrincipal
+                  && <strong>{formatRial(loan.interest.totalInterest)} سود کل</strong>}
+                {loan.interest.repaymentBelowPrincipal && <em className="loan-interest__badge">جمع اقساط از اصل وام کمتر است</em>}
+                {loan.interest.approximate && <em className="loan-interest__badge">تقریبی</em>}
+              </div>}
             </article>
           );
         })}

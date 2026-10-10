@@ -136,6 +136,25 @@ export class ExpenseTrackerDB extends Dexie {
       });
       if (emptyLoanIds.length > 0) await tx.table('loans').bulkDelete(emptyLoanIds);
     });
+    this.version(6).stores({
+      categories: 'id, name',
+      recurringExpenses: 'id, categoryId',
+      expenses:
+        'id, categoryId, [year+month], &generationKey, loanId, loanInstallmentId',
+      lenders: 'id, name',
+      loans: 'id, lenderId, expenseCategoryId, mode, migrationSourceId',
+      loanInstallments:
+        'id, loanId, &[loanId+installmentNumber], [dueYear+dueMonth], isPaid, expenseId',
+    }).upgrade(async (tx) => {
+      await tx.table('loans').toCollection().modify((loan) => {
+        // None of the existing loans carries interest data, and an unknown rate is honest where a
+        // 0 would read as a real figure: backfill with null, never 0, exactly as version 5 did for
+        // `totalAmount`. `'none'` says "no interest recorded", which the user can change per loan.
+        loan.principal = null;
+        loan.interestMode = 'none';
+        loan.interestRateAnnual = null;
+      });
+    });
   }
 }
 

@@ -46,8 +46,25 @@ export async function updateExpense(id: string, input: Partial<ExpenseInput>): P
   await db.expenses.update(id, updates);
 }
 
+/**
+ * Deleting a loan's payment expense would otherwise leave the installment pointing at a row that
+ * no longer exists, so the back-reference is cleared in the same transaction. `isPaid` is left
+ * alone: the installment still records that a payment happened, and saving the loan again books
+ * a fresh expense for it from the paid count the user enters.
+ */
 export async function deleteExpense(id: string): Promise<void> {
-  await db.expenses.delete(id);
+  await db.transaction('rw', db.expenses, db.loanInstallments, async () => {
+    const expense = await db.expenses.get(id);
+    if (!expense) return;
+    await db.expenses.delete(id);
+    if (!expense.loanInstallmentId) return;
+    const installment = await db.loanInstallments.get(expense.loanInstallmentId);
+    if (installment?.expenseId !== id) return;
+    await db.loanInstallments.update(installment.id, {
+      expenseId: null,
+      updatedAt: new Date().toISOString(),
+    });
+  });
 }
 
 export async function getExpense(id: string): Promise<Expense | undefined> {

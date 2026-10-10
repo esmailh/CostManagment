@@ -57,6 +57,12 @@ export interface Expense {
 
 export type LoanMode = 'dated' | 'term';
 
+/**
+ * How a loan's interest rate is arrived at: the user says there is none, types one in, or lets the
+ * app solve it from the principal, the installment amount and the installment count.
+ */
+export type LoanInterestMode = 'none' | 'manual' | 'auto';
+
 export interface Loan {
   id: string;
   title: string;
@@ -68,6 +74,22 @@ export interface Loan {
   installmentCount: number;
   /** Sum of effective planned amounts; null when one or more amounts are unknown. */
   totalAmount: number | null;
+  /**
+   * The amount actually borrowed — the principal `P` of the annuity equation. Deliberately kept
+   * apart from `totalAmount`, which is the sum of the installments and so answers a different
+   * question. For an interest-bearing loan the two differ (Mellat: a 500,000,000 principal repaid
+   * as 60 × 14,095,000), and feeding the repayment total in as the principal would solve to a
+   * 0% rate — a wrong answer that still looks plausible.
+   */
+  principal: number | null;
+  /** How this loan's interest is determined. */
+  interestMode: LoanInterestMode;
+  /**
+   * Annual interest rate in percent, exactly as the user typed it (23 for ۲۳٪), so editing the
+   * loan shows the same number back. Set only in 'manual' mode; 'auto' stores nothing and
+   * re-solves the rate from the loan's own numbers, so it can never go stale behind an edit.
+   */
+  interestRateAnnual: number | null;
   /** Optional amount inherited by installments without an explicit override. */
   defaultInstallmentAmount: number | null;
   /** Whether linked payment expenses participate in fixed-expense reports. */

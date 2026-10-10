@@ -159,6 +159,11 @@ export async function migrateVerifiedRecurringLoans(): Promise<LoanMigrationRepo
           // number of remaining terms is unknown, so the total stays underived
           // until the user completes the loan through the loan form.
           totalAmount: null,
+          // The recurring record says what was paid, never what was borrowed, and nothing here
+          // knows whether the loan carried interest.
+          principal: null,
+          interestMode: 'none',
+          interestRateAnnual: null,
           defaultInstallmentAmount: typeof source.amount === 'number' && Number.isFinite(source.amount) && source.amount > 0
             ? source.amount
             : null,

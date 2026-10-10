@@ -1,11 +1,22 @@
 import { db } from '../db/db';
-import type { Category, Expense, Lender, Loan, LoanInstallment, RecurringExpense } from '../db/types';
+import type { Category, Expense, Lender, Loan, LoanInstallment, LoanInterestMode, RecurringExpense } from '../db/types';
 import { todayJalali } from '../lib/jalaali';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-export const BACKUP_VERSION = 4;
+export const BACKUP_VERSION = 5;
+
+/**
+ * The version that started storing `defaultInstallmentAmount` on the loan and leaving each
+ * installment's `plannedAmount` null when it simply inherits that default. Older files carry the
+ * amounts on the installments instead, so those have to be re-derived on import.
+ *
+ * Pinned to a literal rather than to `BACKUP_VERSION`: the two happened to agree at version 4, and
+ * tying them together means the next bump silently re-derives every v4 file — wiping the defaults
+ * those files already store correctly.
+ */
+const DEFAULTS_STORED_SINCE = 4;
 
 export interface BackupData {
   version: number;
@@ -63,11 +74,16 @@ function zeroToNull(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+/** A rate of 0 is a real value — a loan with no interest — so unlike an amount it is kept. */
+function nonNegativeOrNull(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 /** Validate a parsed JSON object against the backup schema. */
 export function validateBackup(data: unknown): data is BackupData {
   if (!isRecord(data)) return false;
   const d = data as Partial<BackupData>;
-  if (![1, 2, 3, BACKUP_VERSION].includes(d.version ?? -1)) return false;
+  if (![1, 2, 3, 4, BACKUP_VERSION].includes(d.version ?? -1)) return false;
   const version = d.version as number;
   if (!Array.isArray(d.categories) || !Array.isArray(d.recurringExpenses) || !Array.isArray(d.expenses)) {
     return false;
@@ -120,6 +136,12 @@ export function validateBackup(data: unknown): data is BackupData {
     if (!['dated', 'term'].includes(candidate.mode)) return false;
     if (!Number.isInteger(loan.installmentCount) || loan.installmentCount < 0) return false;
     if (!isOptionalMoney(loan.totalAmount)) return false;
+    // Interest fields are absent from version-4 and older files, where they were not recorded yet.
+    if (loan.principal !== undefined && !isOptionalMoney(loan.principal)) return false;
+    if (loan.interestMode !== undefined && !['none', 'manual', 'auto'].includes(loan.interestMode)) return false;
+    if (loan.interestRateAnnual !== undefined && loan.interestRateAnnual !== null
+      && !(typeof loan.interestRateAnnual === 'number'
+        && Number.isFinite(loan.interestRateAnnual) && loan.interestRateAnnual >= 0)) return false;
     if (loan.defaultInstallmentAmount !== undefined && !isOptionalMoney(loan.defaultInstallmentAmount)) return false;
     if (loan.includeInFixedExpenses !== undefined && typeof loan.includeInFixedExpenses !== 'boolean') return false;
     if (loan.mode === 'dated') {
@@ -152,8 +174,9 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
     items.push(installment);
     installmentsByLoan.set(installment.loanId, items);
   }
+  const usesStoredDefaults = data.version >= DEFAULTS_STORED_SINCE;
   const commonDefaults = new Map<string, number | null>();
-  if (data.version < BACKUP_VERSION) {
+  if (!usesStoredDefaults) {
     for (const [loanId, items] of installmentsByLoan) {
       const knownPlannedAmounts = items.map((item) => item.plannedAmount)
         .filter((amount): amount is number => isPositiveMoney(amount));
@@ -169,10 +192,16 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
   }
   const importedLoans = (data.loans ?? []).map((loan) => {
     const legacy = loan as Loan & { categoryId?: string };
+    const interestMode: LoanInterestMode = legacy.interestMode ?? 'none';
     const normalized = {
       ...loan,
       totalAmount: zeroToNull(loan.totalAmount),
-      defaultInstallmentAmount: data.version === BACKUP_VERSION
+      // Absent from version-4 and older files. Note this map bypasses the loan service entirely,
+      // so a field left out here reaches the table as `undefined` rather than being defaulted.
+      principal: zeroToNull(legacy.principal),
+      interestMode,
+      interestRateAnnual: interestMode === 'manual' ? nonNegativeOrNull(legacy.interestRateAnnual) : null,
+      defaultInstallmentAmount: usesStoredDefaults
         ? zeroToNull(loan.defaultInstallmentAmount)
         : commonDefaults.get(loan.id) ?? null,
       includeInFixedExpenses: loan.includeInFixedExpenses ?? true,
@@ -193,13 +222,18 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
       });
     }
     const { categoryId: _categoryId, ...rest } = legacy;
+    // Every normalised field has to be named again here: this branch rebuilds the row from the
+    // spread, so anything left out is dropped from the imported loan without a type error.
     return { ...rest, lenderId, expenseCategoryId: categoryId,
+      principal: normalized.principal,
+      interestMode: normalized.interestMode,
+      interestRateAnnual: normalized.interestRateAnnual,
       defaultInstallmentAmount: normalized.defaultInstallmentAmount,
       includeInFixedExpenses: normalized.includeInFixedExpenses } as Loan;
   });
   const importedInstallments = (data.loanInstallments ?? []).map((installment) => ({
     ...installment,
-    plannedAmount: data.version < BACKUP_VERSION && commonDefaults.get(installment.loanId) != null
+    plannedAmount: !usesStoredDefaults && commonDefaults.get(installment.loanId) != null
       ? null
       : installment.plannedAmount,
   }));

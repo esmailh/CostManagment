@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from '../hooks/useTheme';
 import { resetAllData } from '../services/backup';
+import { deleteAllLoans } from '../services/loans';
 import { seedDefaultCategories } from '../db/seed';
 import { Button } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
@@ -17,6 +18,7 @@ export function Settings() {
   const [view, setView] = useState<View>('root');
   const [theme, setTheme] = useTheme();
   const [resetOpen, setResetOpen] = useState(false);
+  const [loansResetOpen, setLoansResetOpen] = useState(false);
 
   useEffect(() => {
     if (view === 'root') return;
@@ -88,6 +90,16 @@ export function Settings() {
         />
       </div>
 
+      <div className="section-title">وام‌ها</div>
+      <div className="card">
+        <div className="settings-row__sub" style={{ marginBottom: 10 }}>
+          برای شروع دوباره با وام‌های تازه، همه وام‌ها را یک‌جا پاک کنید. هزینه‌های غیروام دست‌نخورده می‌مانند.
+        </div>
+        <Button variant="danger-soft" block onClick={() => setLoansResetOpen(true)}>
+          حذف تمام وام‌ها
+        </Button>
+      </div>
+
       <div className="section-title">داده‌ها</div>
       <div className="card">
         <Button variant="danger-soft" block onClick={() => setResetOpen(true)}>
@@ -106,6 +118,19 @@ export function Settings() {
           await resetAllData();
           await seedDefaultCategories();
           setResetOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={loansResetOpen}
+        title="حذف تمام وام‌ها"
+        message="همه وام‌ها، اقساط آن‌ها و هزینه‌هایی که بابت اقساط ثبت شده‌اند حذف می‌شوند. سایر هزینه‌ها دست‌نخورده می‌مانند. این عملیات قابل بازگشت نیست."
+        confirmLabel="حذف همه وام‌ها"
+        danger
+        onCancel={() => setLoansResetOpen(false)}
+        onConfirm={async () => {
+          await deleteAllLoans();
+          setLoansResetOpen(false);
         }}
       />
     </div>

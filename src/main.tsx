@@ -5,6 +5,7 @@ import './styles/theme.css';
 import './styles/global.css';
 import { App } from './App';
 import { seedDefaultCategories } from './db/seed';
+import { repairLoanExpenseLinks } from './services/loans';
 import { migrateVerifiedRecurringLoans } from './services/loanMigration';
 
 // Bundle the Persian variable font (single woff2, all weights) and inject it.
@@ -18,6 +19,14 @@ async function bootstrap() {
   const migration = await migrateVerifiedRecurringLoans();
   if (migration.migratedSourceIds.length > 0) {
     console.info('[loan-migration]', migration);
+  }
+  // Rebuilds the installment → expense links a lost write broke. A broken link is not cosmetic:
+  // it makes the loan unsavable until it is repaired, so this runs before the UI mounts. It is
+  // idempotent, and it stays a boot step rather than a schema upgrade because importing a backup
+  // writes expenses and installments directly and can reintroduce broken links at any time.
+  const repair = await repairLoanExpenseLinks();
+  if (repair.linksRestored > 0 || repair.linksCleared > 0 || repair.expensesAdopted > 0 || repair.duplicatesRemoved > 0) {
+    console.info('[loan-link-repair]', repair);
   }
 
   createRoot(document.getElementById('root')!).render(

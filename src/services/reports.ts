@@ -1,4 +1,5 @@
 import { db } from '../db/db';
+import type { LoanInterestInfo } from '../lib/interest';
 import { monthKey, previousMonth } from '../lib/jalaali';
 import { calculateLoanSummary } from './loans';
 
@@ -129,9 +130,13 @@ export interface LoanReportItem {
   paidCount: number;
   remainingCount: number;
   totalAmount: number | null;
+  /** The amount borrowed, as recorded. Not the sum of the installments. */
+  principal: number | null;
+  /** Solved, typed or absent — null when the loan carries no interest. */
+  interest: LoanInterestInfo | null;
   paidAmount: number | null;
   remainingAmount: number | null;
-  /** Amount-based when amounts are known; otherwise installment-count based. */
+  /** Share of installments paid: `paidCount / installmentCount`. Never money-based. */
   progress: number;
   finishDate: { year: number; month: number; day: number | null } | null;
 }
@@ -146,6 +151,9 @@ export interface LoansReport {
   totalAmount: number | null;
   paidAmount: number | null;
   remainingAmount: number | null;
+  /** Total interest across the loans that carry it; null unless every one of them reports a figure. */
+  totalInterest: number | null;
+  interestBearingCount: number;
   progress: number;
 }
 
@@ -170,7 +178,9 @@ export async function getLoansReport(): Promise<LoansReport> {
     );
     const summary = calculateLoanSummary(loan, loanInstallments);
     const paidCount = summary.paidCount;
-    const remainingCount = Math.max(0, loan.installmentCount - paidCount);
+    // A loan can carry installment rows without a declared count (an early migration left some
+    // that way); the rows are the honest denominator, exactly as `calculateLoanSummary` reads it.
+    const installmentCount = loan.installmentCount > 0 ? loan.installmentCount : loanInstallments.length;
     const lastDated = [...loanInstallments].reverse().find(
       (item) => item.dueYear !== null && item.dueMonth !== null,
     );
@@ -179,13 +189,15 @@ export async function getLoansReport(): Promise<LoansReport> {
       title: loan.title,
       lenderName: lenderNames.get(loan.lenderId) ?? 'وام‌دهنده نامشخص',
       lenderIcon: lenderIcons.get(loan.lenderId) ?? null,
-      installmentCount: loan.installmentCount,
+      installmentCount,
       paidCount,
-      remainingCount,
+      remainingCount: summary.remainingCount,
       totalAmount: summary.totalAmount,
+      principal: summary.principal,
+      interest: summary.interest,
       paidAmount: summary.paidAmount,
       remainingAmount: summary.remainingAmount,
-      progress: summary.progress ?? (loan.installmentCount > 0 ? (paidCount / loan.installmentCount) * 100 : 0),
+      progress: summary.progress ?? 0,
       finishDate: loan.mode === 'dated' && lastDated
         ? { year: lastDated.dueYear!, month: lastDated.dueMonth!, day: lastDated.dueDay }
         : null,
@@ -203,6 +215,14 @@ export async function getLoansReport(): Promise<LoansReport> {
   const totalAmount = knownAmounts ? items.reduce((sum, item) => sum + item.totalAmount!, 0) : null;
   const paidAmount = knownAmounts ? items.reduce((sum, item) => sum + item.paidAmount!, 0) : null;
   const remainingAmount = knownAmounts ? items.reduce((sum, item) => sum + item.remainingAmount!, 0) : null;
+  // Interest is summed only over the loans that actually carry it, and only when each of those
+  // reports a figure: a partial sum would understate the total without saying so.
+  const interestItems = items.filter((item) => item.interest !== null);
+  const interestKnown = interestItems.length > 0
+    && interestItems.every((item) => item.interest!.totalInterest !== null);
+  const totalInterest = interestKnown
+    ? interestItems.reduce((sum, item) => sum + item.interest!.totalInterest!, 0)
+    : null;
 
   return {
     items,
@@ -214,8 +234,11 @@ export async function getLoansReport(): Promise<LoansReport> {
     totalAmount,
     paidAmount,
     remainingAmount,
-    progress: totalAmount !== null && totalAmount > 0 && paidAmount !== null
-      ? Math.min(100, (paidAmount / totalAmount) * 100)
-      : installmentCount > 0 ? (paidCount / installmentCount) * 100 : 0,
+    totalInterest,
+    interestBearingCount: interestItems.length,
+    // Progress counts installments, so it always agrees with the «اقساط پرداختی X از Y» row
+    // above it. Measuring it against the amounts would let a loan whose installments outrun its
+    // principal (interest) report 100% while terms remain.
+    progress: installmentCount > 0 ? Math.min(100, (paidCount / installmentCount) * 100) : 0,
   };
 }
