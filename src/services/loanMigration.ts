@@ -168,6 +168,10 @@ export async function migrateVerifiedRecurringLoans(): Promise<LoanMigrationRepo
             ? source.amount
             : null,
           includeInFixedExpenses: true,
+          reminderMode: existingLoan?.reminderMode ?? 'none',
+          reminderYear: existingLoan?.reminderYear ?? null,
+          reminderMonth: existingLoan?.reminderMonth ?? null,
+          reminderDay: existingLoan?.reminderDay ?? null,
           startYear: first?.year ?? null,
           startMonth: first?.month ?? null,
           endYear: last?.year ?? null,

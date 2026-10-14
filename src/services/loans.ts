@@ -1,5 +1,6 @@
 import { db } from '../db/db';
-import type { Expense, Loan, LoanInstallment, LoanInterestMode, LoanMode } from '../db/types';
+import type { Expense, Loan, LoanInstallment, LoanInterestMode, LoanMode, LoanReminderMode } from '../db/types';
+import { reconcileLoanReminders } from './loanReminders';
 import type { LoanInterestInfo } from '../lib/interest';
 import { resolveLoanInterest } from '../lib/interest';
 import { monthLength, nextMonth, shiftMonth, todayJalali, type JalaliDate } from '../lib/jalaali';
@@ -30,6 +31,10 @@ export interface LoanInput {
   endYear?: number;
   endMonth?: number;
   dueDay?: number;
+  reminderMode?: LoanReminderMode;
+  reminderYear?: number | null;
+  reminderMonth?: number | null;
+  reminderDay?: number | null;
   historicalPayments?: HistoricalPaymentInput[];
   /** For term-only loans, mark the first N installments paid at their effective amount. */
   paidCount?: number;
@@ -99,6 +104,16 @@ function normalizeInterestMode(
     throw new Error('برای محاسبه خودکار سود، مبلغ هر قسط را مشخص کنید.');
   }
   return mode;
+}
+
+function normalizeReminder(input: Pick<LoanInput, 'reminderMode' | 'reminderYear' | 'reminderMonth' | 'reminderDay'>) {
+  const mode = input.reminderMode ?? 'none';
+  if (!(['none', 'due-date', 'custom'] as const).includes(mode)) throw new Error('نوع یادآور معتبر نیست.');
+  if (mode !== 'custom') return { mode, year: null, month: null, day: null };
+  const year = input.reminderYear; const month = input.reminderMonth; const day = input.reminderDay;
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) throw new Error('تاریخ یادآور را کامل وارد کنید.');
+  validateDate({ year: year!, month: month!, day: day! });
+  return { mode, year: year!, month: month!, day: day! };
 }
 
 function normalizedAmounts(input: LoanUpdateInput): Array<number | null> {
@@ -384,6 +399,7 @@ export async function addLoan(input: LoanInput): Promise<Loan> {
   const interestMode = normalizeInterestMode(resolved, principal, defaultAmount, amounts);
   const annualRate = normalizeOptionalRate(resolved.interestRateAnnual);
   if (interestMode === 'manual' && annualRate === null) throw new Error('نرخ سود سالانه را وارد کنید.');
+  const reminder = normalizeReminder(resolved);
   const schedule = buildSchedule(resolved);
   const now = new Date().toISOString();
   const loanId = uuid();
@@ -426,6 +442,10 @@ export async function addLoan(input: LoanInput): Promise<Loan> {
     endYear: resolved.mode === 'dated' ? resolved.endYear! : null,
     endMonth: resolved.mode === 'dated' ? resolved.endMonth! : null,
     dueDay: resolved.mode === 'dated' ? resolved.dueDay! : 1,
+    reminderMode: reminder.mode,
+    reminderYear: reminder.year,
+    reminderMonth: reminder.month,
+    reminderDay: reminder.day,
     createdAt: now,
     updatedAt: now,
   };
@@ -470,6 +490,7 @@ export async function addLoan(input: LoanInput): Promise<Loan> {
     await db.loanInstallments.bulkPut(installments);
     if (expenses.length > 0) await db.expenses.bulkPut(expenses);
   });
+  await reconcileLoanReminders();
   return loan;
 }
 
@@ -483,8 +504,9 @@ export async function updateLoan(loanId: string, input: LoanUpdateInput): Promis
   const amounts = normalizedAmounts(resolved);
   const schedule = buildSchedule(resolved);
   const paidCount = resolvePaidCount(resolved);
+  const reminder = normalizeReminder(resolved);
 
-  return db.transaction('rw', db.loans, db.loanInstallments, db.expenses, db.lenders, db.categories, async () => {
+  const updatedLoan = await db.transaction('rw', db.loans, db.loanInstallments, db.expenses, db.lenders, db.categories, async () => {
     const [current, lender, expenseCategory] = await Promise.all([
       db.loans.get(loanId),
       db.lenders.get(resolved.lenderId),
@@ -538,6 +560,10 @@ export async function updateLoan(loanId: string, input: LoanUpdateInput): Promis
       endYear: resolved.mode === 'dated' ? resolved.endYear! : null,
       endMonth: resolved.mode === 'dated' ? resolved.endMonth! : null,
       dueDay: resolved.mode === 'dated' ? resolved.dueDay! : 1,
+      reminderMode: reminder.mode,
+      reminderYear: reminder.year,
+      reminderMonth: reminder.month,
+      reminderDay: reminder.day,
       updatedAt: now,
     };
 
@@ -634,6 +660,8 @@ export async function updateLoan(loanId: string, input: LoanUpdateInput): Promis
     if (removed.length > 0) await db.loanInstallments.bulkDelete(removed.map((item) => item.id));
     return updated;
   });
+  await reconcileLoanReminders();
+  return updatedLoan;
 }
 
 export async function markInstallmentPaid(
@@ -669,6 +697,7 @@ export async function markInstallmentPaid(
     await db.expenses.put(paymentExpense(loan, row, effectiveDate, amount, row.expenseId!,
       kept?.generationKey ?? linkKey(installment.loanId, installmentId), kept?.createdAt ?? now));
   });
+  await reconcileLoanReminders();
 }
 
 export async function cancelInstallmentPayment(installmentId: string): Promise<void> {
@@ -691,6 +720,7 @@ export async function cancelInstallmentPayment(installmentId: string): Promise<v
       updatedAt: new Date().toISOString(),
     });
   });
+  await reconcileLoanReminders();
 }
 
 export async function updateInstallmentAmount(installmentId: string, plannedAmount: number | null): Promise<void> {
@@ -727,6 +757,7 @@ export async function deleteLoan(loanId: string): Promise<void> {
     if (installments.length > 0) await db.loanInstallments.bulkDelete(installments.map((item) => item.id));
     await db.loans.delete(loanId);
   });
+  await reconcileLoanReminders();
 }
 
 /**
@@ -735,7 +766,7 @@ export async function deleteLoan(loanId: string): Promise<void> {
  * Returns how many loans were deleted.
  */
 export async function deleteAllLoans(): Promise<number> {
-  return db.transaction('rw', db.loans, db.loanInstallments, db.expenses, async () => {
+  const deletedCount = await db.transaction('rw', db.loans, db.loanInstallments, db.expenses, async () => {
     const loans = await db.loans.toArray();
     for (const loan of loans) {
       const installments = await db.loanInstallments.where('loanId').equals(loan.id).toArray();
@@ -758,6 +789,8 @@ export async function deleteAllLoans(): Promise<number> {
     if (loans.length > 0) await db.loans.bulkDelete(loans.map((loan) => loan.id));
     return loans.length;
   });
+  await reconcileLoanReminders();
+  return deletedCount;
 }
 
 export interface LoanLinkRepairReport {

@@ -7,6 +7,7 @@ import { App } from './App';
 import { seedDefaultCategories } from './db/seed';
 import { repairLoanExpenseLinks } from './services/loans';
 import { migrateVerifiedRecurringLoans } from './services/loanMigration';
+import { reconcileLoanReminders } from './services/loanReminders';
 
 // Bundle the Persian variable font (single woff2, all weights) and inject it.
 const style = document.createElement('style');
@@ -28,6 +29,7 @@ async function bootstrap() {
   if (repair.linksRestored > 0 || repair.linksCleared > 0 || repair.expensesAdopted > 0 || repair.duplicatesRemoved > 0) {
     console.info('[loan-link-repair]', repair);
   }
+  await reconcileLoanReminders();
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

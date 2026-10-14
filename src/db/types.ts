@@ -62,6 +62,7 @@ export type LoanMode = 'dated' | 'term';
  * app solve it from the principal, the installment amount and the installment count.
  */
 export type LoanInterestMode = 'none' | 'manual' | 'auto';
+export type LoanReminderMode = 'none' | 'due-date' | 'custom';
 
 export interface Loan {
   id: string;
@@ -100,6 +101,11 @@ export interface Loan {
   endYear: number | null;
   endMonth: number | null;
   dueDay: number | null;
+  reminderMode: LoanReminderMode;
+  /** Jalali date for a custom reminder; null for all other modes. */
+  reminderYear: number | null;
+  reminderMonth: number | null;
+  reminderDay: number | null;
   /** Optional source metadata used by one-time/import migrations. */
   migrationSource?: string | null;
   migrationSourceId?: string | null;

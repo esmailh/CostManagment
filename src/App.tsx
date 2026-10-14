@@ -7,6 +7,7 @@ import { Onboarding } from './components/Onboarding';
 import { Layout } from './components/Layout';
 import { AddExpense } from './pages/AddExpense';
 import { useApp } from './context/AppContext';
+import { reconcileLoanReminders } from './services/loanReminders';
 
 const ONBOARDING_KEY = 'expense-tracker:onboarded';
 
@@ -27,6 +28,14 @@ function Root() {
     });
     return () => { void listener.then((handle) => handle.remove()); };
   }, [addOpen, setAddOpen, setTab, tab]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listener = NativeApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void reconcileLoanReminders();
+    });
+    return () => { void listener.then((handle) => handle.remove()); };
+  }, []);
 
   if (!onboarded) {
     return (

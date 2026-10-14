@@ -25,7 +25,7 @@ import {
   updateLoan,
   type LoanUpdateInput,
 } from '../services/loans';
-import type { LoanInterestMode, LoanMode } from '../db/types';
+import type { LoanInterestMode, LoanMode, LoanReminderMode } from '../db/types';
 
 interface FormState {
   title: string; lenderId: string; expenseCategoryId: string; mode: LoanMode; description: string;
@@ -33,6 +33,7 @@ interface FormState {
   interestMode: LoanInterestMode; annualRate: string;
   startYear: string; startMonth: string; endYear: string; endMonth: string; dueDay: string;
   overrides: string[]; paidCount: string;
+  reminderMode: LoanReminderMode; reminderYear: string; reminderMonth: string; reminderDay: string;
 }
 
 const today = todayJalali();
@@ -41,6 +42,7 @@ const blankForm = (): FormState => ({
   principal: '', defaultAmount: '', includeInFixedExpenses: true, interestMode: 'none', annualRate: '',
   startYear: String(today.year), startMonth: String(today.month),
   endYear: String(today.year), endMonth: String(today.month), dueDay: '1', overrides: [], paidCount: '',
+  reminderMode: 'none', reminderYear: String(today.year), reminderMonth: String(today.month), reminderDay: String(today.day),
 });
 const optionalAmount = (value: string): number | null => value.trim() ? parseDigits(value) : null;
 const money = (value: number | null) => value === null ? 'نامشخص' : formatRial(value);
@@ -144,6 +146,10 @@ export function Loans() {
       endMonth: loan.endMonth?.toString() ?? String(today.month), dueDay: loan.dueDay?.toString() ?? '1',
       overrides: installments.map((x) => x.plannedAmount?.toString() ?? ''),
       paidCount: String(installments.findIndex((x) => !x.isPaid) < 0 ? installments.length : installments.findIndex((x) => !x.isPaid)),
+      reminderMode: loan.reminderMode ?? 'none',
+      reminderYear: String(loan.reminderYear ?? today.year),
+      reminderMonth: String(loan.reminderMonth ?? today.month),
+      reminderDay: String(loan.reminderDay ?? today.day),
     });
     setOverrideNumber('1'); setOverrideAmount('');
     setError(''); setFormOpen(true);
@@ -158,6 +164,10 @@ export function Loans() {
       installmentAmounts: Array.from({ length: installmentCount }, (_, i) => optionalAmount(form.overrides[i] ?? '')),
       includeInFixedExpenses: form.includeInFixedExpenses,
       paidCount: form.paidCount.trim() ? parseDigits(form.paidCount) : undefined,
+      reminderMode: form.reminderMode,
+      reminderYear: form.reminderMode === 'custom' ? parseDigits(form.reminderYear) : null,
+      reminderMonth: form.reminderMode === 'custom' ? parseDigits(form.reminderMonth) : null,
+      reminderDay: form.reminderMode === 'custom' ? parseDigits(form.reminderDay) : null,
       ...(form.mode === 'dated' ? { startYear: parseDigits(form.startYear), startMonth: parseDigits(form.startMonth), endYear: parseDigits(form.endYear), endMonth: parseDigits(form.endMonth), dueDay: parseDigits(form.dueDay) } : {}),
     };
   }
@@ -295,6 +305,23 @@ export function Loans() {
             {interestPreview.repaymentBelowPrincipal && <p className="loan-schedule-note">جمع اقساط از اصل وام کمتر است؛ این دو عدد با هم نمی‌خوانند، مبالغ را بررسی کنید.</p>}
             {interestPreview.approximate && <p className="loan-schedule-note">مبالغ اقساط یکسان نیستند؛ نرخ محاسبه‌شده تقریبی است.</p>}
           </div>}
+        </div>
+        <div className="loan-interest-form">
+          <Field label="یادآور پرداخت">
+            <SegmentedControl
+              value={form.reminderMode}
+              onChange={(reminderMode) => setForm({ ...form, reminderMode })}
+              options={[
+                { value: 'none', label: 'بدون یادآور' },
+                { value: 'due-date', label: 'سررسید اقساط' },
+                { value: 'custom', label: 'تاریخ دلخواه' },
+              ]}
+            />
+          </Field>
+          {form.reminderMode === 'custom' && <Field label="تاریخ یادآور" className="field--full">
+            <JalaliDateFields value={{ year: parseDigits(form.reminderYear), month: parseDigits(form.reminderMonth), day: parseDigits(form.reminderDay) }} onChange={(value) => setForm({ ...form, reminderYear: String(value.year), reminderMonth: String(value.month), reminderDay: String(value.day) })} />
+          </Field>}
+          {form.reminderMode !== 'none' && <p className="loan-schedule-note">اعلان ساعت ۹ صبحِ روز قبل نمایش داده می‌شود.</p>}
         </div>
         <label className="switch-row"><input type="checkbox" checked={form.includeInFixedExpenses} onChange={(e) => setForm({ ...form, includeInFixedExpenses: e.target.checked })} /><span>پرداخت اقساط در گزارش هزینه‌های ثابت محاسبه شود</span></label>
         <details className="loan-details"><summary>زمان‌بندی و جزئیات اختیاری</summary><div className="form-grid"><Field label="نوع برنامه"><select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as LoanMode })}><option value="term">فقط شماره اقساط</option><option value="dated">سررسید ماهانه</option></select></Field><Field label="تعداد اقساط پرداخت‌شده (اختیاری)"><input inputMode="numeric" value={form.paidCount} onChange={(e) => setForm({ ...form, paidCount: e.target.value })} placeholder={form.mode === 'dated' ? 'خالی: محاسبه خودکار تا ماه جاری' : '۰'} /></Field>{form.mode === 'dated' && <><Field label="ماه شروع" className="field--full"><JalaliDateFields monthOnly value={{ year: parseDigits(form.startYear), month: parseDigits(form.startMonth), day: 1 }} onChange={(value) => setForm((prev) => { const next = { ...prev, startYear: String(value.year), startMonth: String(value.month) }; const count = Math.min(120, parseDigits(prev.installmentCount)); if (count > 0) { const end = endMonthFor(value.year, value.month, count); next.endYear = String(end.year); next.endMonth = String(end.month); } return next; })} /></Field><Field label="ماه پایان" className="field--full"><JalaliDateFields monthOnly value={{ year: parseDigits(form.endYear), month: parseDigits(form.endMonth), day: 1 }} onChange={setRange} /></Field><Field label="روز سررسید (پیش‌فرض اول ماه)"><select className="select" value={form.dueDay || '1'} onChange={(e) => setForm({ ...form, dueDay: e.target.value })}>{Array.from({ length: 31 }, (_, i) => i + 1).map((day) => <option key={day} value={day}>{toPersianDigits(day)}</option>)}</select></Field></>}<Field label="توضیحات"><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>

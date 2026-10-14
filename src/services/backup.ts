@@ -1,11 +1,12 @@
 import { db } from '../db/db';
-import type { Category, Expense, Lender, Loan, LoanInstallment, LoanInterestMode, RecurringExpense } from '../db/types';
-import { todayJalali } from '../lib/jalaali';
+import type { Category, Expense, Lender, Loan, LoanInstallment, LoanInterestMode, LoanReminderMode, RecurringExpense } from '../db/types';
+import { monthLength, todayJalali } from '../lib/jalaali';
+import { reconcileLoanReminders } from './loanReminders';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-export const BACKUP_VERSION = 5;
+export const BACKUP_VERSION = 6;
 
 /**
  * The version that started storing `defaultInstallmentAmount` on the loan and leaving each
@@ -83,7 +84,7 @@ function nonNegativeOrNull(value: number | null | undefined): number | null {
 export function validateBackup(data: unknown): data is BackupData {
   if (!isRecord(data)) return false;
   const d = data as Partial<BackupData>;
-  if (![1, 2, 3, 4, BACKUP_VERSION].includes(d.version ?? -1)) return false;
+  if (![1, 2, 3, 4, 5, BACKUP_VERSION].includes(d.version ?? -1)) return false;
   const version = d.version as number;
   if (!Array.isArray(d.categories) || !Array.isArray(d.recurringExpenses) || !Array.isArray(d.expenses)) {
     return false;
@@ -144,6 +145,15 @@ export function validateBackup(data: unknown): data is BackupData {
         && Number.isFinite(loan.interestRateAnnual) && loan.interestRateAnnual >= 0)) return false;
     if (loan.defaultInstallmentAmount !== undefined && !isOptionalMoney(loan.defaultInstallmentAmount)) return false;
     if (loan.includeInFixedExpenses !== undefined && typeof loan.includeInFixedExpenses !== 'boolean') return false;
+    if (version >= 6) {
+      if (!['none', 'due-date', 'custom'].includes(candidate.reminderMode)) return false;
+      if (candidate.reminderMode === 'custom') {
+        if (!Number.isInteger(candidate.reminderYear) || candidate.reminderYear! < 1200 || candidate.reminderYear! > 1600
+          || !Number.isInteger(candidate.reminderMonth) || !Number.isInteger(candidate.reminderDay)) return false;
+        if (candidate.reminderMonth! < 1 || candidate.reminderMonth! > 12 || candidate.reminderDay! < 1
+          || candidate.reminderDay! > monthLength(candidate.reminderYear!, candidate.reminderMonth!)) return false;
+      } else if (candidate.reminderYear !== null || candidate.reminderMonth !== null || candidate.reminderDay !== null) return false;
+    }
     if (loan.mode === 'dated') {
       if (!Number.isInteger(loan.startYear) || !Number.isInteger(loan.startMonth)) return false;
       if (!Number.isInteger(loan.endYear) || !Number.isInteger(loan.endMonth)) return false;
@@ -193,6 +203,7 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
   const importedLoans = (data.loans ?? []).map((loan) => {
     const legacy = loan as Loan & { categoryId?: string };
     const interestMode: LoanInterestMode = legacy.interestMode ?? 'none';
+    const reminderMode: LoanReminderMode = data.version >= 6 ? legacy.reminderMode : 'none';
     const normalized = {
       ...loan,
       totalAmount: zeroToNull(loan.totalAmount),
@@ -205,6 +216,10 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
         ? zeroToNull(loan.defaultInstallmentAmount)
         : commonDefaults.get(loan.id) ?? null,
       includeInFixedExpenses: loan.includeInFixedExpenses ?? true,
+      reminderMode,
+      reminderYear: reminderMode === 'custom' ? legacy.reminderYear : null,
+      reminderMonth: reminderMode === 'custom' ? legacy.reminderMonth : null,
+      reminderDay: reminderMode === 'custom' ? legacy.reminderDay : null,
     } as Loan;
     if (legacy.lenderId && legacy.expenseCategoryId) return normalized;
     const categoryId = legacy.categoryId;
@@ -229,7 +244,11 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
       interestMode: normalized.interestMode,
       interestRateAnnual: normalized.interestRateAnnual,
       defaultInstallmentAmount: normalized.defaultInstallmentAmount,
-      includeInFixedExpenses: normalized.includeInFixedExpenses } as Loan;
+      includeInFixedExpenses: normalized.includeInFixedExpenses,
+      reminderMode: normalized.reminderMode,
+      reminderYear: normalized.reminderYear,
+      reminderMonth: normalized.reminderMonth,
+      reminderDay: normalized.reminderDay } as Loan;
   });
   const importedInstallments = (data.loanInstallments ?? []).map((installment) => ({
     ...installment,
@@ -267,6 +286,7 @@ export async function importBackup(data: BackupData, mode: ImportMode): Promise<
     if (data.settings.theme) localStorage.setItem('expense-tracker:theme', data.settings.theme);
     if (data.settings.onboarded) localStorage.setItem('expense-tracker:onboarded', data.settings.onboarded);
   }
+  await reconcileLoanReminders();
 }
 
 export async function resetAllData(): Promise<void> {
@@ -282,6 +302,7 @@ export async function resetAllData(): Promise<void> {
     await db.categories.clear();
     },
   );
+  await reconcileLoanReminders();
 }
 
 /** Trigger a browser download of the backup JSON file. */
