@@ -8,6 +8,7 @@ import { seedDefaultCategories } from './db/seed';
 import { repairLoanExpenseLinks } from './services/loans';
 import { migrateVerifiedRecurringLoans } from './services/loanMigration';
 import { reconcileLoanReminders } from './services/loanReminders';
+import { AuthProvider } from './context/AuthContext';
 
 // Bundle the Persian variable font (single woff2, all weights) and inject it.
 const style = document.createElement('style');
@@ -33,7 +34,7 @@ async function bootstrap() {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <AuthProvider><App /></AuthProvider>
     </StrictMode>,
   );
 }
@@ -42,7 +43,7 @@ void bootstrap().catch((error) => {
   console.error('Application bootstrap failed', error);
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <AuthProvider><App /></AuthProvider>
     </StrictMode>,
   );
 });

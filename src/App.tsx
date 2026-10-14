@@ -8,12 +8,15 @@ import { Layout } from './components/Layout';
 import { AddExpense } from './pages/AddExpense';
 import { useApp } from './context/AppContext';
 import { reconcileLoanReminders } from './services/loanReminders';
+import { useAuth } from './context/AuthContext';
+import { AuthScreen } from './components/AuthScreen';
 
 const ONBOARDING_KEY = 'expense-tracker:onboarded';
 
 function Root() {
   useTheme();
   const { tab, setTab, addOpen, setAddOpen } = useApp();
+  const { profile, authenticated, lock } = useAuth();
   const [onboarded, setOnboarded] = useState(() => localStorage.getItem(ONBOARDING_KEY) === '1');
 
   useEffect(() => {
@@ -33,9 +36,10 @@ function Root() {
     if (!Capacitor.isNativePlatform()) return;
     const listener = NativeApp.addListener('appStateChange', ({ isActive }) => {
       if (isActive) void reconcileLoanReminders();
+      else if (authenticated) lock();
     });
     return () => { void listener.then((handle) => handle.remove()); };
-  }, []);
+  }, [authenticated, lock]);
 
   if (!onboarded) {
     return (
@@ -47,6 +51,8 @@ function Root() {
       />
     );
   }
+
+  if (!profile || !authenticated) return <AuthScreen />;
 
   return (
     <>

@@ -22,6 +22,7 @@
     "@capacitor/share": "^6.0.4",
     "@capacitor/splash-screen": "^6.0.3",
     "@capacitor/status-bar": "^6.0.3",
+    "@capgo/capacitor-native-biometric": "^6.0.4",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "jalaali-js": "^1.2.6",

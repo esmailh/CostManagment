@@ -11,14 +11,17 @@ import { CategoriesManager } from './settings/CategoriesManager';
 import { RecurringManager } from './settings/RecurringManager';
 import { Backup } from './settings/Backup';
 import { LendersManager } from './settings/LendersManager';
+import { ProfileSecurity } from './settings/ProfileSecurity';
+import { useAuth } from '../context/AuthContext';
 
-type View = 'root' | 'categories' | 'lenders' | 'recurring' | 'backup';
+type View = 'root' | 'profile' | 'categories' | 'lenders' | 'recurring' | 'backup';
 
 export function Settings() {
   const [view, setView] = useState<View>('root');
   const [theme, setTheme] = useTheme();
   const [resetOpen, setResetOpen] = useState(false);
   const [loansResetOpen, setLoansResetOpen] = useState(false);
+  const { profile, clearAccount } = useAuth();
 
   useEffect(() => {
     if (view === 'root') return;
@@ -31,6 +34,9 @@ export function Settings() {
     return () => window.removeEventListener('app-back', onBack);
   }, [view]);
 
+  if (view === 'profile') {
+    return <ProfileSecurity onBack={() => setView('root')} />;
+  }
   if (view === 'categories') {
     return <CategoriesManager onBack={() => setView('root')} />;
   }
@@ -47,6 +53,13 @@ export function Settings() {
   return (
     <div>
       <div className="card">
+        <button type="button" className="settings-row" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setView('profile')}>
+          <span>
+            <div className="settings-row__title">پروفایل و امنیت</div>
+            <div className="settings-row__sub">{profile?.displayName} · رمز عبور و ورود بیومتریک</div>
+          </span>
+          <ChevronRightIcon width={20} height={20} style={{ color: 'var(--text-muted)' }} />
+        </button>
         <button type="button" className="settings-row" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setView('categories')}>
           <span>
             <div className="settings-row__title">دسته‌بندی‌ها</div>
@@ -110,13 +123,14 @@ export function Settings() {
       <ConfirmDialog
         open={resetOpen}
         title="حذف تمام اطلاعات"
-        message="تمام هزینه‌ها، دسته‌بندی‌ها و تنظیمات حذف خواهند شد. این عملیات قابل بازگشت نیست."
+        message="تمام هزینه‌ها، دسته‌بندی‌ها، تنظیمات و حساب کاربری حذف خواهند شد. این عملیات قابل بازگشت نیست."
         confirmLabel="حذف همه اطلاعات"
         danger
         onCancel={() => setResetOpen(false)}
         onConfirm={async () => {
           await resetAllData();
           await seedDefaultCategories();
+          await clearAccount();
           setResetOpen(false);
         }}
       />

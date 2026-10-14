@@ -43,6 +43,41 @@ a {
   color: inherit;
 }
 
+/* ---------- Authentication ---------- */
+.auth-page { min-height: 100%; display: grid; place-items: center; padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom)); background: var(--bg); }
+.auth-card { width: min(100%, 420px); padding: 28px 22px; border-radius: 24px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 16px 45px rgba(0,0,0,.08); text-align: center; }
+.auth-card h1 { font-size: 22px; margin-top: 14px; }
+.auth-card > p { color: var(--text-muted); margin: 8px 0 22px; }
+.auth-logo, .profile-avatar { margin: auto; display: grid; place-items: center; color: var(--primary-contrast); background: var(--primary); font-weight: 800; }
+.auth-logo { width: 58px; height: 58px; border-radius: 18px; font-size: 28px; }
+.auth-form, .profile-form { display: grid; gap: 14px; text-align: right; }
+.auth-form label, .profile-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.auth-form input, .profile-form input { width: 100%; min-height: 46px; border: 1px solid var(--border); border-radius: 12px; padding: 0 12px; background: var(--bg); color: var(--text); font-size: 15px; outline: none; }
+.auth-form input:focus, .profile-form input:focus { border-color: var(--primary); }
+.primary-button, .secondary-button, .toggle-button { min-height: 44px; border: 0; border-radius: 12px; padding: 0 16px; font-weight: 700; }
+.primary-button { background: var(--primary); color: var(--primary-contrast); }
+.secondary-button { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+.biometric-button { width: 100%; margin-top: 12px; }
+.auth-error { color: #dc2626; background: rgba(220,38,38,.08); padding: 9px; border-radius: 10px; font-size: 13px; }
+.profile-security { width: 100%; padding-bottom: 20px; text-align: right; }
+.profile-summary { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 16px 20px; text-align: center; }
+.profile-avatar { width: 64px; height: 64px; border-radius: 50%; font-size: 25px; margin-bottom: 7px; }
+.profile-summary strong { font-size: 17px; overflow-wrap: anywhere; }
+.profile-summary span { color: var(--text-muted); direction: ltr; unicode-bidi: isolate; }
+.profile-form { padding: 16px; }
+.profile-form input:disabled { opacity: .75; background: var(--border); }
+.profile-help { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.8; font-weight: 400; }
+.biometric-card { padding: 0 16px; }
+.biometric-card .settings-row { align-items: flex-start; }
+.settings-row__content { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.settings-row__content .settings-row__title, .settings-row__content .settings-row__sub { display: block; }
+.biometric-help { padding: 0 0 14px; }
+.toggle-button { flex: 0 0 auto; min-width: 78px; background: var(--border); color: var(--text-muted); white-space: nowrap; }
+.toggle-button[aria-checked="true"] { background: var(--primary); color: var(--primary-contrast); }
+.auth-message { margin: 12px 0; padding: 10px; border-radius: 10px; background: var(--surface); color: var(--text-muted); text-align: center; line-height: 1.7; }
+.danger-link { width: 100%; padding: 16px; border: 0; background: none; color: #dc2626; font-weight: 700; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+
 /* ---------- App shell ---------- */
 .app {
   max-width: 520px;
@@ -469,8 +504,21 @@ a {
   margin-top: 18px;
 }
 
-.modal__actions .btn {
+.modal__actions .btn,
+.modal__actions .primary-button,
+.modal__actions .secondary-button {
   flex: 1;
+}
+
+.biometric-dialog {
+  direction: rtl;
+  text-align: right;
+}
+
+.biometric-dialog .auth-message--error {
+  margin: 0;
+  background: var(--danger-soft);
+  color: var(--danger-soft-text);
 }
 
 .sheet-backdrop {
